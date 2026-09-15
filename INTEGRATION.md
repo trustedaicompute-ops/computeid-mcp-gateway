@@ -23,10 +23,10 @@ We believe identity infrastructure should be precise about its guarantees.
 - Server-side audit trail: passport lifecycle events plus any agent actions you log
 - Instant revocation — verification and capability checks reflect revoked status immediately
 - DevicePassports for GPUs/servers, with admin approval workflow
+- Post-quantum dual-signing: every AgentPassport carries a live ML-DSA-65 (FIPS 204) signature alongside RSA-2048, and DevicePassports use ML-DSA-87 — both verifiable offline
 
 **Not provided today (roadmap):**
 
-- Post-quantum / hybrid signatures (planned with our Phase 2 threshold-CA work)
 - Agent-held keys and proof-of-possession (current model is issuer-side attestation)
 - Hardware-rooted trust (TPM/TEE attestation)
 - Decentralised verification (verification is served by our API)
