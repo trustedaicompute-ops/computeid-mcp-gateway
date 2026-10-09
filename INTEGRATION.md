@@ -172,7 +172,7 @@ requests.delete(f"{API}/v1/agents/{passport_id}/revoke", headers=HEADERS,
 If your stack uses the Model Context Protocol, agents can manage their own identity natively.
 
 ```bash
-pip install computeid-mcp   # v1.2.0+ (X-API-Key auth)
+pip install computeid-mcp   # v2.0.0+
 ```
 
 Claude Desktop config (`claude_desktop_config.json`):
