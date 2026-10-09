@@ -1,9 +1,0 @@
-README.md
-server.py
-setup.py
-computeid_mcp.egg-info/PKG-INFO
-computeid_mcp.egg-info/SOURCES.txt
-computeid_mcp.egg-info/dependency_links.txt
-computeid_mcp.egg-info/entry_points.txt
-computeid_mcp.egg-info/requires.txt
-computeid_mcp.egg-info/top_level.txt
