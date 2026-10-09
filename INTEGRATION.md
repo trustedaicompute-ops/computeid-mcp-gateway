@@ -39,10 +39,12 @@ If your integration depends on something in the second list, talk to us — part
 
 The fastest path. Five endpoints cover the full lifecycle.
 
+Every call except `GET /v1/agents/{passport_id}/verify` needs your API key in the `X-API-Key` header (`Authorization: Bearer` is not accepted). The examples read it from `$COMPUTEID_API_KEY`.
+
 ### Issue a passport
 
 ```bash
-curl -X POST https://api.aicomputeid.com/v1/agents/register \
+curl -X POST -H "X-API-Key: $COMPUTEID_API_KEY" https://api.aicomputeid.com/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "ResearchAgent",
@@ -83,7 +85,7 @@ Returns `status` (`active` / `revoked`), `signature_valid`, capabilities, and ti
 ### Check a specific capability
 
 ```bash
-curl https://api.aicomputeid.com/v1/agents/{passport_id}/capabilities/web_browse
+curl -H "X-API-Key: $COMPUTEID_API_KEY" https://api.aicomputeid.com/v1/agents/{passport_id}/capabilities/web_browse
 ```
 
 Returns `{"granted": true, "capability": "web_browse", "scope": {}, "bound_at": "..."}` or `{"granted": false, "reason": "capability_not_found"}`. After revocation, every capability returns `{"granted": false, "reason": "passport_revoked"}`.
@@ -91,7 +93,7 @@ Returns `{"granted": true, "capability": "web_browse", "scope": {}, "bound_at": 
 ### Log an agent action
 
 ```bash
-curl -X POST https://api.aicomputeid.com/v1/agents/{passport_id}/actions \
+curl -X POST -H "X-API-Key: $COMPUTEID_API_KEY" https://api.aicomputeid.com/v1/agents/{passport_id}/actions \
   -H "Content-Type: application/json" \
   -d '{"action": "web_search", "details": {"query": "GPU prices"}, "outcome": "success"}'
 ```
@@ -99,13 +101,13 @@ curl -X POST https://api.aicomputeid.com/v1/agents/{passport_id}/actions \
 ### Read an agent's audit trail
 
 ```bash
-curl https://api.aicomputeid.com/v1/agents/{passport_id}/actions?limit=20
+curl -H "X-API-Key: $COMPUTEID_API_KEY" https://api.aicomputeid.com/v1/agents/{passport_id}/actions?limit=20
 ```
 
 ### Revoke a passport
 
 ```bash
-curl -X DELETE https://api.aicomputeid.com/v1/agents/{passport_id}/revoke \
+curl -X DELETE -H "X-API-Key: $COMPUTEID_API_KEY" https://api.aicomputeid.com/v1/agents/{passport_id}/revoke \
   -H "Content-Type: application/json" \
   -d '{"reason": "Task complete"}'
 ```
@@ -113,8 +115,8 @@ curl -X DELETE https://api.aicomputeid.com/v1/agents/{passport_id}/revoke \
 ### List all passports
 
 ```bash
-curl https://api.aicomputeid.com/v1/agents
-curl "https://api.aicomputeid.com/v1/agents?status=active"
+curl -H "X-API-Key: $COMPUTEID_API_KEY" https://api.aicomputeid.com/v1/agents
+curl -H "X-API-Key: $COMPUTEID_API_KEY" "https://api.aicomputeid.com/v1/agents?status=active"
 ```
 
 ---
@@ -124,12 +126,14 @@ curl "https://api.aicomputeid.com/v1/agents?status=active"
 A complete working integration in ~30 lines using `requests`:
 
 ```python
+import os
 import requests
 
 API = "https://api.aicomputeid.com"
+HEADERS = {"X-API-Key": os.environ["COMPUTEID_API_KEY"]}
 
 # 1. Issue a passport when you create an agent
-passport = requests.post(f"{API}/v1/agents/register", json={
+passport = requests.post(f"{API}/v1/agents/register", headers=HEADERS, json={
     "name": "ResearchAgent",
     "organization": "Acme Corp",
     "description": "Summarises market research",
@@ -142,20 +146,20 @@ def agent_may(capability: str) -> bool:
     v = requests.get(f"{API}/v1/agents/{passport_id}/verify").json()
     if v.get("status") != "active" or not v.get("signature_valid"):
         return False
-    c = requests.get(f"{API}/v1/agents/{passport_id}/capabilities/{capability}").json()
+    c = requests.get(f"{API}/v1/agents/{passport_id}/capabilities/{capability}", headers=HEADERS).json()
     return c.get("granted", False)
 
 if agent_may("web_browse"):
     run_browse_task()
     # 3. Log what the agent did
-    requests.post(f"{API}/v1/agents/{passport_id}/actions", json={
+    requests.post(f"{API}/v1/agents/{passport_id}/actions", headers=HEADERS, json={
         "action": "web_search",
         "details": {"query": "GPU prices"},
         "outcome": "success",
     })
 
 # 4. Revoke when the agent is done (or misbehaves)
-requests.delete(f"{API}/v1/agents/{passport_id}/revoke",
+requests.delete(f"{API}/v1/agents/{passport_id}/revoke", headers=HEADERS,
                 json={"reason": "Task complete"})
 ```
 
@@ -168,7 +172,7 @@ requests.delete(f"{API}/v1/agents/{passport_id}/revoke",
 If your stack uses the Model Context Protocol, agents can manage their own identity natively.
 
 ```bash
-pip install computeid-mcp   # v1.1.0+
+pip install computeid-mcp   # v1.2.0+ (X-API-Key auth)
 ```
 
 Claude Desktop config (`claude_desktop_config.json`):
@@ -177,7 +181,8 @@ Claude Desktop config (`claude_desktop_config.json`):
 {
   "mcpServers": {
     "computeid": {
-      "command": "computeid-mcp"
+      "command": "computeid-mcp",
+      "env": { "COMPUTEID_API_KEY": "your-api-key" }
     }
   }
 }
@@ -195,7 +200,7 @@ Tools exposed (all call the live API):
 | `get_agent_audit_log` | Read an agent's audit trail |
 | `revoke_agent_passport` | Revoke immediately |
 | `list_agent_passports` | List all agents |
-| `register_device` / `list_devices` / `approve_device` / `revoke_device` | DevicePassports |
+| `register_device` / `list_devices` / `revoke_device` | DevicePassports (`/v1/device-passports`) |
 | `generate_audit_summary` | Data summary across agents, devices, logs |
 
 Trust-level presets (`restricted`, `standard`, `elevated`, `autonomous`) map to explicit capability lists — or pass your own `capabilities` array.
@@ -206,12 +211,14 @@ Trust-level presets (`restricted`, `standard`, `elevated`, `autonomous`) map to 
 
 ```bash
 pip install computeid-cli
-computeid status            # check API connection
-computeid login             # admin login
-computeid devices list      # manage DevicePassports
+computeid status                               # check API connection
+computeid login                                # save your API key (or set COMPUTEID_API_KEY)
+computeid agent issue --name ResearchAgent     # issue an AgentPassport
+computeid agent list                           # your passports
+computeid agent revoke <passport_id>           # revoke
 ```
 
-The CLI currently focuses on device and admin workflows; agent commands track the API.
+The CLI covers the AgentPassport lifecycle (issue, verify, check, log, audit, revoke) and your audit logs.
 
 ---
 

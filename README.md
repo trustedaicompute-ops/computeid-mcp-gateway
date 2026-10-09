@@ -9,8 +9,8 @@ Once installed, Claude can:
 - **Verify agent identity** before accepting work from another agent
 - **Log every action** to an immutable audit trail automatically
 - **Revoke agents instantly** if they behave unexpectedly
-- **Register GPU hardware** with cryptographic DevicePassports
-- **Generate compliance reports** for EU AI Act, SOC2, NIST AI RMF
+- **Issue DevicePassports** (RSA-2048 + ML-DSA-87) for GPU servers, robots, drones and other devices
+- **Summarise audit data** to support record-keeping (e.g. EU AI Act Article 12)
 
 ## Install
 
@@ -30,12 +30,14 @@ Add to your `claude_desktop_config.json`:
       "args": ["-m", "computeid_mcp"],
       "env": {
         "COMPUTEID_API_URL": "https://api.aicomputeid.com",
-        "COMPUTEID_TOKEN": "your-token-here"
+        "COMPUTEID_API_KEY": "your-api-key"
       }
     }
   }
 }
 ```
+
+The key is sent as the `X-API-Key` header (the API does not accept `Authorization: Bearer`). `COMPUTEID_TOKEN` is still read as a fallback for existing configs, but it must hold an API key.
 
 ## Tools available
 
@@ -48,12 +50,12 @@ Add to your `claude_desktop_config.json`:
 | `revoke_agent_passport` | Instantly revoke an agent |
 | `list_agent_passports` | List all agents in your organisation |
 | `get_agent_audit_log` | Get full audit trail for an agent |
-| `register_device` | Register a GPU or server |
-| `list_devices` | List all devices |
-| `approve_device` | Approve a pending device |
-| `revoke_device` | Revoke a device |
-| `generate_compliance_report` | EU AI Act, SOC2, NIST AI RMF reports |
-| `get_audit_logs` | Organisation-wide audit logs |
+| `check_agent_capability` | Check whether an agent holds a capability |
+| `register_device` | Issue a DevicePassport (active immediately) |
+| `list_devices` | List your DevicePassports |
+| `revoke_device` | Revoke a DevicePassport |
+| `generate_audit_summary` | Data summary across agents, devices and logs |
+| `get_audit_logs` | Your account's audit logs |
 
 ## Docs
 

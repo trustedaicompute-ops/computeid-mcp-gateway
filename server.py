@@ -23,7 +23,9 @@ from mcp import types
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 API_URL = os.getenv("COMPUTEID_API_URL", "https://api.aicomputeid.com")
-API_TOKEN = os.getenv("COMPUTEID_TOKEN", "")
+# The API authenticates with X-API-Key only. COMPUTEID_TOKEN is still read
+# for existing configs that put an API key there.
+API_KEY = os.getenv("COMPUTEID_API_KEY") or os.getenv("COMPUTEID_TOKEN", "")
 
 server = Server("computeid")
 
@@ -40,8 +42,8 @@ TRUST_LEVEL_CAPABILITIES = {
 
 def get_headers():
     h = {"Content-Type": "application/json"}
-    if API_TOKEN:
-        h["Authorization"] = f"Bearer {API_TOKEN}"
+    if API_KEY:
+        h["X-API-Key"] = API_KEY
     return h
 
 async def api_get(path: str) -> dict:
@@ -52,11 +54,6 @@ async def api_get(path: str) -> dict:
 async def api_post(path: str, data: dict) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(f"{API_URL}{path}", json=data, headers=get_headers())
-        return r.json()
-
-async def api_patch(path: str) -> dict:
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.patch(f"{API_URL}{path}", headers=get_headers())
         return r.json()
 
 async def api_delete(path: str, data: dict = None) -> dict:
@@ -253,7 +250,7 @@ Use this whenever you spawn, create, or deploy an AI agent that will act autonom
         # ── DEVICE PASSPORT ──────────────────────────────────────────────────
         types.Tool(
             name="register_device",
-            description="Register a GPU, server, or other hardware device and issue a DevicePassport.",
+            description="Issue a DevicePassport (RSA-2048 + ML-DSA-87) for a GPU server, robot, drone or other device. Active immediately.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -261,42 +258,26 @@ Use this whenever you spawn, create, or deploy an AI agent that will act autonom
                         "type": "string",
                         "description": "Name of the device e.g. 'NVIDIA H100 Node 1', 'GPU Cluster A'"
                     },
-                    "device_type": {
+                    "device_category": {
                         "type": "string",
-                        "enum": ["GPU", "Server", "TPU", "FPGA"],
-                        "description": "Type of device"
+                        "description": "Free-text category e.g. 'gpu-server', 'edge-device', 'robot', 'drone', 'vehicle' (default 'generic')"
                     },
-                    "ip_address": {
+                    "organization": {
                         "type": "string",
-                        "description": "IP address of the device e.g. '192.168.1.10'"
+                        "description": "Organisation that owns the device"
                     }
                 },
-                "required": ["device_name", "device_type", "ip_address"]
+                "required": ["device_name"]
             }
         ),
 
         types.Tool(
             name="list_devices",
-            description="List all registered devices and their DevicePassport status.",
+            description="List your account's DevicePassports and their status.",
             inputSchema={
                 "type": "object",
                 "properties": {},
                 "required": []
-            }
-        ),
-
-        types.Tool(
-            name="approve_device",
-            description="Approve a pending device registration and activate its DevicePassport.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "device_code": {
-                        "type": "string",
-                        "description": "Device code to approve e.g. 'GPU-001'"
-                    }
-                },
-                "required": ["device_code"]
             }
         ),
 
@@ -306,16 +287,16 @@ Use this whenever you spawn, create, or deploy an AI agent that will act autonom
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "device_code": {
+                    "passport_id": {
                         "type": "string",
-                        "description": "Device code to revoke e.g. 'GPU-001'"
+                        "description": "DevicePassport ID (from register_device or list_devices)"
                     },
                     "reason": {
                         "type": "string",
                         "description": "Reason for revocation"
                     }
                 },
-                "required": ["device_code"]
+                "required": ["passport_id"]
             }
         ),
 
@@ -340,7 +321,7 @@ This is a data summary to support compliance workflows (e.g. EU AI Act Article 1
         # ── AUDIT LOGS ───────────────────────────────────────────────────────
         types.Tool(
             name="get_audit_logs",
-            description="Get the organisation-wide audit logs — all device connections and agent actions recorded in ComputeID.",
+            description="Get the organisation-wide audit logs — every audit row about your account's agent passports.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -370,7 +351,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 Status: {data.get('status', 'running')}
 API URL: {API_URL}
 Time: {data.get('time', datetime.now().isoformat())}
-Authenticated: {'Yes' if API_TOKEN else 'No — set COMPUTEID_TOKEN env var'}
+API key set: {'Yes' if API_KEY else 'No — set COMPUTEID_API_KEY env var'}
 
 ComputeID MCP Server v1.1.0
 compute-id.com"""
@@ -541,54 +522,51 @@ Systems that check the API will see this immediately."""
 
         # REGISTER DEVICE
         elif name == "register_device":
-            data = await api_post("/api/devices/register", {
+            body = {
                 "name": arguments.get("device_name"),
-                "type": arguments.get("device_type", "GPU"),
-                "ip_address": arguments.get("ip_address"),
-            })
+                "device_category": arguments.get("device_category") or "generic",
+            }
+            if arguments.get("organization"):
+                body["organization"] = arguments["organization"]
+            data = await api_post("/v1/device-passports/register", body)
             if "error" in data:
                 result = f"Error registering device: {data['error']}"
             else:
-                result = f"""Device registered
+                result = f"""DevicePassport issued
 
-Device Code:  {data.get('device_code', 'PENDING')}
-Name:         {arguments.get('device_name')}
-Type:         {arguments.get('device_type')}
-IP Address:   {arguments.get('ip_address')}
-Status:       PENDING — awaiting admin approval
+Passport ID:  {data.get('passport_id')}
+Name:         {data.get('name')}
+Category:     {data.get('device_category')}
+Organisation: {data.get('organization') or '—'}
+Status:       {str(data.get('status', 'active')).upper()}
+Signatures:   {data.get('signature_algorithm', 'RSA-SHA256')} + {data.get('pq_signature_algorithm', 'ML-DSA-87')}
 
-Next step: approve_device with device_code="{data.get('device_code', '')}"
+Verify: GET /v1/device-passports/{data.get('passport_id')}/verify
 
 compute-id.com"""
 
         # LIST DEVICES
         elif name == "list_devices":
-            data = await api_get("/api/devices")
-            if isinstance(data, list) and len(data) > 0:
-                lines = ["Registered Devices (ComputeID API)\n" + "━"*40]
+            data = await api_get("/v1/device-passports")
+            if isinstance(data, dict) and "error" in data:
+                result = f"Error listing devices: {data['error']}"
+            elif isinstance(data, list) and len(data) > 0:
+                lines = ["DevicePassports (ComputeID API)\n" + "━"*40]
                 for d in data:
-                    lines.append(f"{d.get('device_code', '?')} | {d.get('name', '?')} | {d.get('type', '?')} | {str(d.get('status', '?')).upper()}")
+                    lines.append(f"{d.get('passport_id', '?')} | {d.get('name', '?')} | {d.get('device_category', '?')} | {str(d.get('status', '?')).upper()}")
                 result = "\n".join(lines)
             else:
-                result = "No devices registered yet. Use register_device to add your first GPU or server."
-
-        # APPROVE DEVICE
-        elif name == "approve_device":
-            device_code = arguments.get("device_code")
-            data = await api_patch(f"/api/devices/{device_code}/approve")
-            if "error" in data:
-                result = f"Error approving device: {data['error']}"
-            else:
-                result = f"Device {device_code} approved and activated. The device now has an active DevicePassport."
+                result = "No device passports yet. Use register_device to issue one."
 
         # REVOKE DEVICE
         elif name == "revoke_device":
-            device_code = arguments.get("device_code")
-            data = await api_patch(f"/api/devices/{device_code}/revoke")
+            passport_id = arguments.get("passport_id")
+            reason = arguments.get("reason") or "manual_revocation"
+            data = await api_delete(f"/v1/device-passports/{passport_id}/revoke", {"reason": reason})
             if "error" in data:
                 result = f"Error revoking device: {data['error']}"
             else:
-                result = f"Device {device_code} revoked.\n\nReason: {arguments.get('reason', 'No reason provided')}"
+                result = f"DevicePassport {passport_id} revoked.\n\nReason: {data.get('reason', reason)}"
 
         # AUDIT SUMMARY
         elif name == "generate_audit_summary":
@@ -598,7 +576,7 @@ compute-id.com"""
             device_count = 0; active_devices = 0; log_count = 0
             agent_count = 0; active_agents = 0; revoked_agents = 0
             try:
-                devices = await api_get("/api/devices")
+                devices = await api_get("/v1/device-passports")
                 if isinstance(devices, list):
                     device_count = len(devices)
                     active_devices = len([d for d in devices if isinstance(d, dict) and d.get("status") == "active"])
@@ -668,7 +646,7 @@ compute-id.com"""
             result = f"Unknown tool: {name}"
 
     except Exception as e:
-        result = f"Error calling {name}: {str(e)}\n\nCheck that COMPUTEID_API_URL is reachable and COMPUTEID_TOKEN is set correctly."
+        result = f"Error calling {name}: {str(e)}\n\nCheck that COMPUTEID_API_URL is reachable and COMPUTEID_API_KEY is set to a valid API key."
 
     return [types.TextContent(type="text", text=result)]
 
